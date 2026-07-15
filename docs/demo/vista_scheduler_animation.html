@@ -1,0 +1,528 @@
+<title>VISTA scheduler — interactive simulation</title>
+<style>
+  :root{
+    --bg:#eef1f5; --panel:#ffffff; --panel2:#e7ecf2; --ink:#1a2029; --muted:#5c6773;
+    --line:#d6dde5; --accent:#2a6fd6; --accent-soft:#d7e5fb;
+    --fresh:#1fa9b6; --warm:#d99a37; --stale:#dd5049;
+    --admit:#1f9d70; --forced:#e0a000; --drop:#dd5049;
+    --shadow:0 1px 2px rgba(20,30,45,.06),0 8px 24px rgba(20,30,45,.06);
+    --font-sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --font-mono:ui-monospace,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{
+      --bg:#0c1016; --panel:#141b23; --panel2:#1b232d; --ink:#e6ecf3; --muted:#93a1b0;
+      --line:#252f3a; --accent:#5296f2; --accent-soft:#15304e;
+      --fresh:#2ec2cf; --warm:#e6ac4d; --stale:#ec6259;
+      --admit:#2bb583; --forced:#efb52a; --drop:#ec6259;
+      --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 30px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="light"]{
+    --bg:#eef1f5; --panel:#ffffff; --panel2:#e7ecf2; --ink:#1a2029; --muted:#5c6773;
+    --line:#d6dde5; --accent:#2a6fd6; --accent-soft:#d7e5fb;
+    --fresh:#1fa9b6; --warm:#d99a37; --stale:#dd5049;
+    --admit:#1f9d70; --forced:#e0a000; --drop:#dd5049;
+    --shadow:0 1px 2px rgba(20,30,45,.06),0 8px 24px rgba(20,30,45,.06);
+  }
+  :root[data-theme="dark"]{
+    --bg:#0c1016; --panel:#141b23; --panel2:#1b232d; --ink:#e6ecf3; --muted:#93a1b0;
+    --line:#252f3a; --accent:#5296f2; --accent-soft:#15304e;
+    --fresh:#2ec2cf; --warm:#e6ac4d; --stale:#ec6259;
+    --admit:#2bb583; --forced:#efb52a; --drop:#ec6259;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 30px rgba(0,0,0,.35);
+  }
+
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font-sans);
+    line-height:1.5;-webkit-font-smoothing:antialiased;padding:22px 20px 40px}
+  .wrap{max-width:1024px;margin:0 auto}
+  h1{font-size:20px;margin:0 0 2px;letter-spacing:-.01em;font-weight:650}
+  h1 b{color:var(--accent)}
+  .sub{color:var(--muted);font-size:13px;margin:0 0 18px;max-width:70ch}
+  .mono{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+
+  /* ---- controls ---- */
+  .controls{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;
+    background:var(--panel);border:1px solid var(--line);border-radius:12px;
+    padding:11px 14px;box-shadow:var(--shadow);margin-bottom:14px}
+  button{font:inherit;font-size:13px;font-weight:550;color:var(--ink);cursor:pointer;
+    background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:6px 13px;
+    transition:background .15s,border-color .15s}
+  button:hover{border-color:var(--accent)}
+  button.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+  button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .ctl{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted)}
+  select,input[type=range]{font:inherit;font-size:12.5px;accent-color:var(--accent)}
+  select{background:var(--panel2);color:var(--ink);border:1px solid var(--line);
+    border-radius:7px;padding:4px 6px}
+  .sep{width:1px;height:22px;background:var(--line)}
+
+  /* ---- counter strip ---- */
+  .stats{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:14px}
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:11px;
+    padding:9px 12px;box-shadow:var(--shadow)}
+  .stat .k{font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+  .stat .v{font-family:var(--font-mono);font-variant-numeric:tabular-nums;
+    font-size:19px;font-weight:600;margin-top:1px;letter-spacing:-.02em}
+  .stat .v small{font-size:11px;color:var(--muted);font-weight:500}
+
+  /* in-flight gate meter */
+  .gatebox{grid-column:span 2}
+  .meter{position:relative;height:16px;border-radius:5px;background:var(--panel2);
+    border:1px solid var(--line);margin-top:7px;overflow:visible}
+  .meter .fill{position:absolute;left:0;top:0;bottom:0;border-radius:4px;
+    background:var(--admit);transition:width .18s ease,background .2s}
+  .meter .fill.shut{background:var(--forced)}
+  .meter .gate{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--ink);opacity:.55}
+  .meter .gate::after{content:"gate";position:absolute;top:-13px;left:50%;transform:translateX(-50%);
+    font-size:8.5px;color:var(--muted);white-space:nowrap;font-family:var(--font-sans)}
+  .pill{display:inline-block;font-size:10px;font-weight:650;letter-spacing:.04em;
+    padding:1px 7px;border-radius:20px;vertical-align:middle;margin-left:6px}
+  .pill.open{background:var(--accent-soft);color:var(--accent)}
+  .pill.shut{background:color-mix(in srgb,var(--forced) 22%,transparent);color:var(--forced)}
+
+  /* ---- board ---- */
+  .boardwrap{overflow-x:auto;background:var(--panel);border:1px solid var(--line);
+    border-radius:13px;box-shadow:var(--shadow);padding:6px}
+  .board{position:relative;width:980px;height:344px;margin:0 auto}
+  .board svg{position:absolute;inset:0;width:980px;height:344px}
+  .lbl{font-family:var(--font-sans);font-size:10px;fill:var(--muted);letter-spacing:.02em}
+  .lbl.b{font-weight:650;fill:var(--ink);font-size:10.5px}
+  .stagebox{fill:var(--panel2);stroke:var(--line)}
+  .engine{fill:color-mix(in srgb,var(--accent) 7%,var(--panel));stroke:var(--accent);stroke-opacity:.5}
+  .flow{stroke:var(--line);stroke-width:1.5;fill:none}
+  .arc{stroke:var(--admit);stroke-width:1.6;fill:none;stroke-dasharray:4 4;opacity:.55}
+  .arc.pulse{opacity:1;stroke-width:2.4;filter:drop-shadow(0 0 3px var(--admit))}
+
+  /* tokens (frames) */
+  .layer{position:absolute;inset:0;pointer-events:none}
+  .tok{position:absolute;left:0;top:0;width:19px;height:19px;margin:-9.5px 0 0 -9.5px;
+    border-radius:4px;border:1px solid rgba(0,0,0,.18);
+    display:flex;align-items:center;justify-content:center;
+    font-family:var(--font-mono);font-size:8.5px;font-weight:600;color:rgba(0,0,0,.62);
+    transition:transform .28s cubic-bezier(.5,0,.3,1),opacity .28s,background .2s;will-change:transform}
+  :root[data-theme="dark"] .tok, @media (prefers-color-scheme:dark){ }
+  .tok.drop{opacity:0;transform-origin:center}
+  .flash{position:absolute;left:0;top:0;width:46px;height:60px;margin:-30px 0 0 -23px;
+    border-radius:8px;pointer-events:none;opacity:0;transition:opacity .25s}
+  .flash.on{opacity:.85}
+
+  /* progress bar inside GPU */
+  .prog{position:absolute;height:5px;border-radius:3px;background:var(--line);overflow:hidden}
+  .prog .p{height:100%;width:0;background:var(--accent);border-radius:3px}
+
+  /* ---- footer ---- */
+  .foot{display:grid;grid-template-columns:1.35fr 1fr;gap:14px;margin-top:14px}
+  @media(max-width:720px){.foot{grid-template-columns:1fr}.stats{grid-template-columns:repeat(3,1fr)}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;
+    padding:12px 14px;box-shadow:var(--shadow)}
+  .card h2{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);
+    margin:0 0 9px;font-weight:600}
+  #log{font-family:var(--font-mono);font-size:11.5px;line-height:1.62;height:150px;overflow:hidden}
+  #log .row{white-space:nowrap;display:flex;gap:7px}
+  #log .t{color:var(--muted)}
+  .ev-admit{color:var(--admit)} .ev-drop{color:var(--drop)} .ev-evict{color:var(--warm)}
+  .ev-forced{color:var(--forced);font-weight:650} .ev-done{color:var(--accent)}
+  .conc{display:flex;flex-direction:column;gap:9px}
+  .crow{display:grid;grid-template-columns:34px 1fr 40px;align-items:center;gap:8px;font-size:11.5px}
+  .crow .cbar{height:15px;background:var(--panel2);border-radius:4px;position:relative;overflow:hidden}
+  .crow .cbar .cf{position:absolute;left:0;top:0;bottom:0;background:var(--accent);
+    border-radius:4px;transition:width .25s ease}
+  .crow.hot .cbar .cf{background:var(--forced)}
+  .crow .cv{text-align:right;font-family:var(--font-mono);color:var(--muted)}
+  .even{position:absolute;top:-2px;bottom:-2px;width:2px;background:var(--ink);opacity:.4}
+  .legend{display:flex;flex-wrap:wrap;gap:10px 16px;margin-top:11px;font-size:11.5px;color:var(--muted)}
+  .legend span{display:inline-flex;align-items:center;gap:6px}
+  .sw{width:12px;height:12px;border-radius:3px;border:1px solid rgba(0,0,0,.18)}
+  .note{font-size:12px;color:var(--muted);margin-top:13px;max-width:80ch}
+  .note code{font-family:var(--font-mono);background:var(--panel2);padding:1px 5px;border-radius:4px;font-size:11px}
+  @media (prefers-reduced-motion:reduce){.tok{transition:none}.arc,.meter .fill{transition:none}}
+  .sim-banner{margin:.6rem 0 1rem;padding:.6rem .8rem;border-left:4px solid #d97706;
+    background:rgba(217,119,6,.10);border-radius:4px;font-size:.92rem;line-height:1.45}
+</style>
+
+<div class="wrap">
+  <h1><b>VISTA</b> scheduler — interactive simulation</h1>
+  <p class="sim-banner"><b>This is a simulation, not a measurement.</b> It animates the real scheduling algorithm, but its service time and arrival rate are illustrative. Numbers shown here (including coverage) are <b>directional only</b> and are <b>not</b> the paper's results. The measurement archive behind the paper is not distributed with this repository.</p>
+  <p class="sub">A discrete-event simulation of the completion-clocked, bounded-stash batch former — the real algorithm
+  (arrival → stash → gate → evict → score → top-<span class="mono">K</span> → completion credit), with
+  <em>illustrative</em> timing, not the measured runs. Four ~30&nbsp;fps cameras feed a per-camera stash; frames
+  release only while the in-flight gate is open, and every dropped frame is counted. Watch where frames wait, age, and die.</p>
+
+  <div class="controls">
+    <button id="play" class="primary">Pause</button>
+    <button id="step">Step ▸</button>
+    <button id="reset">Reset</button>
+    <div class="sep"></div>
+    <div class="ctl">Speed <input id="speed" type="range" min="10" max="120" value="42" style="width:88px"></div>
+    <div class="sep"></div>
+    <div class="ctl">stash&nbsp;<select id="stash"><option>1</option><option>2</option></select></div>
+    <div class="ctl">K&nbsp;<select id="K"><option>1</option><option selected>2</option><option>3</option><option>4</option></select></div>
+    <div class="ctl">depth&nbsp;d&nbsp;<select id="depth"><option>1</option><option selected>2</option><option>3</option></select></div>
+    <div class="ctl"><label><input id="imp" type="checkbox" checked> importance (cam&nbsp;0 hot)</label></div>
+  </div>
+
+  <div class="stats">
+    <div class="stat gatebox">
+      <div class="k">in-flight credit <span id="gatepill" class="pill open">gate open</span></div>
+      <div class="v"><span id="inflt">0</span><small> / <span id="inmax">4</span> frames &nbsp;·&nbsp; ≤ <span id="gateval">2</span> to release</small></div>
+      <div class="meter"><div id="mfill" class="fill" style="width:0"></div><div id="mgate" class="gate"></div></div>
+    </div>
+    <div class="stat"><div class="k">arrivals</div><div class="v" id="arr">0</div></div>
+    <div class="stat"><div class="k">admitted</div><div class="v" id="adm" style="color:var(--admit)">0</div></div>
+    <div class="stat"><div class="k">dropped <small>(counted)</small></div><div class="v" id="drp" style="color:var(--drop)">0</div></div>
+    <div class="stat"><div class="k">coverage</div><div class="v"><span id="cov">0</span><small>%</small></div></div>
+  </div>
+
+  <div class="boardwrap">
+    <div class="board" id="board">
+      <svg viewBox="0 0 980 344" id="svg"></svg>
+      <div class="layer" id="layer"></div>
+    </div>
+  </div>
+
+  <div class="legend">
+    <span><span class="sw" style="background:var(--fresh)"></span>fresh (age→0)</span>
+    <span><span class="sw" style="background:var(--warm)"></span>aging</span>
+    <span><span class="sw" style="background:var(--stale)"></span>near τ<sub>max</sub>=150&nbsp;ms (evicted)</span>
+    <span><span class="sw" style="background:var(--admit)"></span>admitted → batch</span>
+    <span><span class="sw" style="background:var(--drop)"></span>counted drop</span>
+  </div>
+
+  <div class="foot">
+    <div class="card">
+      <h2>Decision log &nbsp;·&nbsp; <span style="text-transform:none;font-weight:500">every frame's fate, like <code style="font-size:10px">sched.csv</code></span></h2>
+      <div id="log" class="mono"></div>
+    </div>
+    <div class="card">
+      <h2>Processed share per camera <span style="text-transform:none;font-weight:500">— concentration</span></h2>
+      <div class="conc" id="conc"></div>
+    </div>
+  </div>
+
+  <p class="note">Try it: turn <b>importance</b> off and watch service level out across cameras; turn it on and the active
+  camera (cam&nbsp;0) wins a larger share. Set <b>d&nbsp;=&nbsp;3</b> and the in-flight credit climbs to 6 — a standing queue
+  re-forms (more latency, no throughput gain). Push <b>K&nbsp;=&nbsp;4</b> and every camera fits each batch, so the ranking
+  stops mattering. Drag <b>speed</b> down to read individual decisions in the log. The exact cap-vs-concentrate magnitudes
+  and the 42% coverage are artifacts of this sim's service time and arrival rate — directional, not the paper's measured numbers.</p>
+</div>
+
+<script>
+"use strict";
+const $=s=>document.querySelector(s), svg=$("#svg"), layer=$("#layer");
+const SVGNS="http://www.w3.org/2000/svg";
+
+/* ---------------- layout (px, single source of truth) ---------------- */
+const LANE_Y=[58,124,190,256];              // camera row centers
+const MIDY=157;
+const X={cam:44,ring:110,dec:176,icb:242,stash:312};
+const ENGINE={x:360,y:34,w:150,h:280};      // scheduler engine
+const BATCH_X=566;
+const GPU={x:626,y:112,w:150,h:96};         // detector box
+const TRK_X=838, OUT_X=930;
+const gpuExecY=GPU.y+34, gpuQueueY=GPU.y+72;
+const gpuTokX=m=>GPU.x+22+m*23;
+
+/* ---------------- config / params ---------------- */
+const P={N:4,K:2,d:2,stash:1,tauMax:150,wf:.40,wi:.35,wr:.25,
+  camPeriod:1000/30, useImp:true,
+  svc:k=>18+11*k};                          // S(1)=29 S(2)=40 S(3)=51 S(4)=62 (sublinear-ish)
+let timeScale=0.042;                         // sim-ms advanced per real-ms
+
+/* ---------------- state ---------------- */
+let st;
+function fresh(){
+  st={
+    t:0, cams:[], gpuExec:null, gpuQueue:[], inFlight:0,
+    arrivals:0, admits:0, drops:0, served:[0,0,0,0],
+    sHat:P.svc(P.K), fid:1, toks:new Map(), transient:[]
+  };
+  for(let c=0;c<P.N;c++){ const hot=(c===0); st.cams.push({
+    id:c, stash:[], nextArr:80+c*8, imp:hot?0.9:0.06, activity:hot?0.9:0.06, lastServed:0, hot});}
+}
+
+/* ---------------- token dom ---------------- */
+function ageColor(age){
+  const t=Math.max(0,Math.min(1,age/P.tauMax));
+  // fresh -> warm -> stale
+  const lerp=(a,b,u)=>a.map((x,i)=>Math.round(x+(b[i]-x)*u));
+  const F=[31,169,182],W=[217,154,55],S=[221,80,73];
+  const rgb = t<0.5? lerp(F,W,t/0.5): lerp(W,S,(t-0.5)/0.5);
+  return `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`;
+}
+function mkTok(f){
+  const d=document.createElement("div"); d.className="tok";
+  d.textContent=f.id; d.style.background=ageColor(0);
+  d.style.transform=`translate(${X.cam}px,${LANE_Y[f.cam]}px) scale(.2)`;
+  d.style.opacity="0"; layer.appendChild(d);
+  st.toks.set(f.uid,d);
+  requestAnimationFrame(()=>{ d.style.opacity="1"; });
+  return d;
+}
+function moveTok(uid,x,y,extra=""){
+  const d=st.toks.get(uid); if(!d) return;
+  d.style.transform=`translate(${x}px,${y}px)${extra}`;
+}
+function colorTok(uid,age){ const d=st.toks.get(uid); if(d) d.style.background=ageColor(age); }
+function killTok(uid,how){
+  const d=st.toks.get(uid); if(!d) return; st.toks.delete(uid);
+  if(how==="drop"){ d.classList.add("drop");
+    const m=d.style.transform.match(/translate\(([-\d.]+)px,([-\d.]+)px\)/);
+    const x=m?+m[1]:0,y=m?+m[2]:0; d.style.background="var(--drop)";
+    d.style.transform=`translate(${x}px,${y+34}px) scale(.7)`;
+  } else { d.style.opacity="0"; d.style.transform+=" scale(.5)"; }
+  setTimeout(()=>d.remove(),320);
+}
+function stashSlotY(cam,j,n){ const spread=(n-1)*22; return LANE_Y[cam]-spread/2+j*22; }
+function layoutStash(cam){
+  const c=st.cams[cam], n=c.stash.length;
+  c.stash.forEach((f,j)=>{ moveTok(f.uid,X.stash,stashSlotY(cam,j,n)); });
+}
+
+/* drop/evict flash behind a stash cell */
+function flash(cam,color){
+  const el=document.createElement("div"); el.className="flash";
+  el.style.left=X.stash+"px"; el.style.top=LANE_Y[cam]+"px";
+  el.style.background=`radial-gradient(closest-side, ${color}, transparent)`;
+  layer.appendChild(el); requestAnimationFrame(()=>el.classList.add("on"));
+  setTimeout(()=>{el.classList.remove("on"); setTimeout(()=>el.remove(),260);},130);
+}
+
+/* ---------------- simulation core ---------------- */
+function arrive(c){
+  const cam=st.cams[c]; st.arrivals++;
+  const f={uid:st.fid, id:st.fid%100, cam:c, tArr:st.t}; st.fid++;
+  mkTok(f);
+  if(cam.stash.length>=P.stash){                 // displace OLDEST (front)
+    const v=cam.stash.shift(); st.drops++; killTok(v.uid,"drop"); flash(c,"var(--drop)");
+    log(st.t,"drop","displace",c,st.t-v.tArr,null);
+  }
+  cam.stash.push(f); layoutStash(c);
+}
+
+function completion(batch){
+  st.inFlight=Math.max(0,st.inFlight-batch.k);
+  st.sHat=0.8*st.sHat+0.2*(P.svc(batch.k));
+  // importance feedback: served hot cameras reveal new-object activity
+  batch.frames.forEach(f=>{
+    moveTok(f.uid,TRK_X,MIDY);
+    setTimeout(()=>{ moveTok(f.uid,OUT_X,MIDY); killTok(f.uid,"out"); },140);
+  });
+  log(st.t,"done","completion",-1,null,batch.k);
+  pulseArc();
+}
+
+function startExec(batch){
+  batch.startT=st.t; batch.endT=st.t+P.svc(batch.k);
+  batch.frames.forEach((f,m)=> moveTok(f.uid,gpuTokX(m),gpuExecY));
+}
+
+function releaseOnce(){
+  // GATE
+  if(st.inFlight> (P.d-1)*P.K) return false;
+  const now=st.t;
+  // EVICT stale (front of each stash) + count
+  for(const cam of st.cams){
+    while(cam.stash.length && (now-cam.stash[0].tArr)>P.tauMax){
+      const v=cam.stash.shift(); st.drops++; killTok(v.uid,"drop"); flash(cam.id,"var(--warm)");
+      log(now,"evict","evict-stale",cam.id,now-v.tArr,null);
+    }
+    layoutStash(cam.id);
+  }
+  // CANDIDATES = oldest (front) frame per non-empty camera
+  const dFair=2*(P.N/P.K)*st.sHat, dHard=4*dFair;
+  const cands=[];
+  for(const cam of st.cams){
+    if(!cam.stash.length) continue;
+    const f=cam.stash[0], age=now-f.tArr;
+    const freshS=Math.max(0,1-age/P.tauMax);
+    const impS=P.useImp? Math.min(1,cam.imp):0;
+    const since=now-cam.lastServed;
+    const fairS=Math.min(1,since/dFair);
+    const v=P.wf*freshS+P.wi*impS+P.wr*fairS;
+    cands.push({cam:cam.id,f,age,freshS,impS,fairS,v,forced:since>dHard});
+  }
+  if(cands.length<P.K) return false;             // wait for more arrivals
+  cands.sort((a,b)=> (a.forced!==b.forced)? (a.forced?-1:1) : b.v-a.v);
+  const pick=cands.slice(0,P.K);
+  // ADMIT
+  const batch={k:P.K,frames:[],startT:null,endT:null};
+  for(const cd of pick){
+    const cam=st.cams[cd.cam]; cam.stash.shift(); cam.lastServed=now;
+    st.admits++; st.served[cd.cam]++; batch.frames.push(cd.f);
+    log(now, cd.forced?"forced":"admit", cd.forced?"forced":"admit", cd.cam, cd.age, null, cd);
+    layoutStash(cd.cam);
+  }
+  st.inFlight+=P.K;
+  // to GPU: exec if free else queue
+  if(!st.gpuExec){ st.gpuExec=batch; startExec(batch); }
+  else { st.gpuQueue.push(batch);
+    batch.frames.forEach((f,m)=> moveTok(f.uid,gpuTokX(m),gpuQueueY)); }
+  return true;
+}
+
+function stepSim(dtSim){
+  st.t+=dtSim;
+  // arrivals
+  for(const cam of st.cams){
+    while(st.t>=cam.nextArr){ arrive(cam.id); cam.nextArr+=P.camPeriod; }
+  }
+  // gpu completion
+  if(st.gpuExec && st.t>=st.gpuExec.endT){
+    const done=st.gpuExec; st.gpuExec=null; completion(done);
+    if(st.gpuQueue.length){ st.gpuExec=st.gpuQueue.shift(); startExec(st.gpuExec); }
+  }
+  // importance = EWMA of scene activity (new-object events per camera)
+  for(const cam of st.cams){
+    const a=1-Math.pow(2,-dtSim/600); cam.imp += (cam.activity-cam.imp)*a;
+  }
+  // release as long as the gate allows
+  let guard=0; while(releaseOnce() && guard++<12){}
+  // continuous re-color of stash tokens by age
+  for(const cam of st.cams) for(const f of cam.stash) colorTok(f.uid, st.t-f.tArr);
+}
+
+/* ---------------- static board drawing ---------------- */
+function el(tag,attrs){ const e=document.createElementNS(SVGNS,tag);
+  for(const k in attrs) e.setAttribute(k,attrs[k]); return e; }
+function box(x,y,w,h,cls,r=7){ return el("rect",{x,y,width:w,height:h,rx:r,class:cls}); }
+function txt(x,y,s,cls="lbl"){ const t=el("text",{x,y,class:cls,"text-anchor":"middle"}); t.textContent=s; return t; }
+function path(d,cls){ return el("path",{d,class:cls}); }
+
+function drawBoard(){
+  svg.innerHTML="";
+  const g=el("g",{}); svg.appendChild(g);
+  // per-camera front-ends
+  for(let c=0;c<P.N;c++){
+    const y=LANE_Y[c];
+    g.appendChild(path(`M${X.cam+16},${y} H${X.stash-16}`,"flow"));
+    // small stage boxes
+    [["cam",X.cam,"cam "+c],["ring",X.ring,"ring"],["dec",X.dec,"decode"],["icb",X.icb,"intercept"]]
+      .forEach(([key,x,label])=>{
+        g.appendChild(box(x-15,y-13,30,26,"stagebox",6));
+        g.appendChild(txt(x,y+27,label,"lbl"));
+      });
+    // stash cell
+    g.appendChild(box(X.stash-16,y-15,32,30,"stagebox",6));
+  }
+  g.appendChild(txt(X.stash,LANE_Y[3]+30,"per-camera stash","lbl b"));
+  g.appendChild(txt(X.icb,18,"intercept: claim frame, transport sees success","lbl"));
+  // fan-in stash -> engine
+  for(let c=0;c<P.N;c++)
+    g.appendChild(path(`M${X.stash+16},${LANE_Y[c]} C${ENGINE.x-24},${LANE_Y[c]} ${ENGINE.x-24},${MIDY} ${ENGINE.x},${MIDY}`,"flow"));
+  // engine
+  g.appendChild(box(ENGINE.x,ENGINE.y,ENGINE.w,ENGINE.h,"engine",12));
+  g.appendChild(txt(ENGINE.x+ENGINE.w/2,ENGINE.y+22,"VISTA scheduler","lbl b"));
+  g.appendChild(txt(ENGINE.x+ENGINE.w/2,ENGINE.y+40,"score = .40·fresh","lbl"));
+  g.appendChild(txt(ENGINE.x+ENGINE.w/2,ENGINE.y+54,"+.35·imp +.25·fair","lbl"));
+  g.appendChild(txt(ENGINE.x+ENGINE.w/2,ENGINE.y+80,"evict age > τmax","lbl"));
+  g.appendChild(txt(ENGINE.x+ENGINE.w/2,ENGINE.y+94,"forced past D_hard","lbl"));
+  g.appendChild(txt(ENGINE.x+ENGINE.w/2,ENGINE.y+120,"release top-K","lbl"));
+  g.appendChild(txt(ENGINE.x+ENGINE.w/2,ENGINE.y+134,"if gate open","lbl"));
+  // engine -> batcher -> gpu -> tracker -> out
+  g.appendChild(path(`M${ENGINE.x+ENGINE.w},${MIDY} H${BATCH_X-16}`,"flow"));
+  g.appendChild(box(BATCH_X-16,MIDY-30,32,60,"stagebox",6));
+  g.appendChild(txt(BATCH_X,MIDY+43,"batcher","lbl"));
+  g.appendChild(txt(BATCH_X,MIDY+55,"b = K","lbl"));
+  g.appendChild(path(`M${BATCH_X+16},${MIDY} H${GPU.x}`,"flow"));
+  g.appendChild(box(GPU.x,GPU.y,GPU.w,GPU.h,"stagebox",9));
+  g.appendChild(txt(GPU.x+GPU.w/2,GPU.y-6,"detector (GPU)","lbl b"));
+  g.appendChild(txt(GPU.x+18,gpuExecY-14,"exec","lbl"));
+  g.appendChild(txt(GPU.x+18,gpuQueueY-14,"queue","lbl"));
+  g.appendChild(path(`M${GPU.x+GPU.w},${MIDY} H${TRK_X-16}`,"flow"));
+  g.appendChild(box(TRK_X-16,MIDY-15,32,30,"stagebox",6));
+  g.appendChild(txt(TRK_X,MIDY+27,"tracker","lbl"));
+  g.appendChild(path(`M${TRK_X+16},${MIDY} H${OUT_X}`,"flow"));
+  g.appendChild(txt(OUT_X-2,MIDY-8,"out","lbl"));
+  // completion arc: tracker -> engine (credit)
+  const arc=path(`M${TRK_X},${MIDY+16} C${TRK_X},${GPU.y+GPU.h+40} ${ENGINE.x+ENGINE.w/2},${ENGINE.y+ENGINE.h+34} ${ENGINE.x+ENGINE.w/2},${ENGINE.y+ENGINE.h}`,"arc");
+  arc.id="arc"; g.appendChild(arc);
+  g.appendChild(txt((TRK_X+ENGINE.x)/2+20,GPU.y+GPU.h+52,"completion → returns in-flight credit","lbl"));
+  // progress bar div for exec
+  let pb=$("#pbar"); if(!pb){ pb=document.createElement("div"); pb.className="prog"; pb.id="pbar";
+    pb.innerHTML='<div class="p" id="pfill"></div>'; layer.appendChild(pb); }
+  pb.style.left=(GPU.x+14)+"px"; pb.style.top=(GPU.y+GPU.h-16)+"px"; pb.style.width=(GPU.w-28)+"px";
+}
+function pulseArc(){ const a=$("#arc"); if(!a) return; a.classList.add("pulse");
+  setTimeout(()=>a.classList.remove("pulse"),240); }
+
+/* ---------------- log ---------------- */
+const logEl=$("#log"); let logRows=[];
+function log(t,cls,ev,cam,age,k,cd){
+  let msg;
+  const T=`${(t/1000).toFixed(2)}s`;
+  if(ev==="completion") msg=`✓ batch done  −${k} in-flight`;
+  else if(ev==="displace") msg=`✕ cam${cam} displace  age ${age|0}ms  (newer arrived)`;
+  else if(ev==="evict-stale") msg=`✕ cam${cam} evict  age ${age|0}ms  > τmax`;
+  else { const f=cd?`  v=${cd.v.toFixed(2)} [f${cd.freshS.toFixed(2)} i${cd.impS.toFixed(2)} r${cd.fairS.toFixed(2)}]`:"";
+    msg=`${ev==="forced"?"★ FORCED":"→ admit"} cam${cam}  age ${age|0}ms${f}`; }
+  logRows.unshift({T,cls:"ev-"+cls,msg}); if(logRows.length>9) logRows.pop();
+  logEl.innerHTML=logRows.map(r=>`<div class="row"><span class="t">${r.T}</span><span class="${r.cls}">${r.msg}</span></div>`).join("");
+}
+
+/* ---------------- HUD render ---------------- */
+const conc=$("#conc");
+function buildConc(){
+  conc.innerHTML="";
+  for(let c=0;c<P.N;c++){
+    const row=document.createElement("div"); row.className="crow"+(st.cams[c].hot&&P.useImp?" hot":"");
+    row.innerHTML=`<span class="mono">cam${c}</span>
+      <div class="cbar"><div class="cf" id="cf${c}"></div><div class="even" style="left:25%"></div></div>
+      <span class="cv" id="cv${c}">0%</span>`;
+    conc.appendChild(row);
+  }
+}
+function hud(){
+  const gateVal=(P.d-1)*P.K, inMax=P.d*P.K, open=st.inFlight<=gateVal;
+  $("#inflt").textContent=st.inFlight; $("#inmax").textContent=inMax; $("#gateval").textContent=gateVal;
+  const mf=$("#mfill"); mf.style.width=(100*Math.min(1,st.inFlight/inMax))+"%";
+  mf.classList.toggle("shut",!open);
+  $("#mgate").style.left=(100*gateVal/inMax)+"%";
+  const gp=$("#gatepill"); gp.textContent=open?"gate open":"gate shut";
+  gp.className="pill "+(open?"open":"shut");
+  $("#arr").textContent=st.arrivals; $("#adm").textContent=st.admits; $("#drp").textContent=st.drops;
+  $("#cov").textContent=st.arrivals? Math.round(100*st.admits/st.arrivals):0;
+  const tot=st.served.reduce((a,b)=>a+b,0)||1;
+  for(let c=0;c<P.N;c++){ const s=st.served[c]/tot;
+    const cf=$("#cf"+c), cv=$("#cv"+c); if(cf){cf.style.width=(100*s)+"%"; cv.textContent=Math.round(100*s)+"%";}}
+  // gpu progress
+  const pf=$("#pfill");
+  if(pf){ if(st.gpuExec){ const p=(st.t-st.gpuExec.startT)/(st.gpuExec.endT-st.gpuExec.startT);
+    pf.style.width=(100*Math.max(0,Math.min(1,p)))+"%"; } else pf.style.width="0"; }
+}
+
+/* ---------------- loop ---------------- */
+let playing=true, lastReal=null; let timeScaleDefault=0.042;
+function frame(ts){
+  if(lastReal==null) lastReal=ts;
+  let dtReal=Math.min(60,ts-lastReal); lastReal=ts;
+  if(playing){
+    let dtSim=dtReal*timeScale;
+    // sub-step for stability
+    const SUB=2; for(let i=0;i<SUB;i++) stepSim(dtSim/SUB);
+    hud();
+  }
+  requestAnimationFrame(frame);
+}
+
+/* ---------------- controls ---------------- */
+function rebuild(){
+  layer.querySelectorAll(".tok,.flash").forEach(e=>e.remove());
+  logRows=[]; logEl.innerHTML="";
+  fresh(); drawBoard(); buildConc(); hud();
+}
+$("#play").onclick=()=>{ playing=!playing; $("#play").textContent=playing?"Pause":"Play"; lastReal=null; };
+$("#step").onclick=()=>{ playing=false; $("#play").textContent="Play"; for(let i=0;i<40;i++) stepSim(4); hud(); };
+$("#reset").onclick=rebuild;
+$("#speed").oninput=e=>{ timeScale=(+e.target.value)/1000; };
+$("#stash").onchange=e=>{ P.stash=+e.target.value; rebuild(); };
+$("#K").onchange=e=>{ P.K=+e.target.value; rebuild(); };
+$("#depth").onchange=e=>{ P.d=+e.target.value; rebuild(); };
+$("#imp").onchange=e=>{ P.useImp=e.target.checked; rebuild(); };
+
+if(matchMedia("(prefers-reduced-motion:reduce)").matches){ playing=false; $("#play").textContent="Play"; }
+timeScale=42/1000;
+rebuild();
+requestAnimationFrame(frame);
+</script>

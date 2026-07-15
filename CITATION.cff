@@ -1,0 +1,34 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite the paper below."
+title: "VISTA: Value-Driven Inference Scheduling for Timely Autonomous Multi-Camera Perception"
+abstract: >-
+  VISTA is a completion-clocked load-shedding scheduler that sits in front of
+  DeepStream's nvstreammux. Under overload it keeps a small bounded stash of
+  fresh frames per camera and, at each inference completion, admits the
+  highest-value frames by freshness, an optional camera-activity term, and a
+  per-camera fairness floor, under a hard staleness bound. Every dropped frame
+  is counted. This repository is the research artifact: the scheduler module,
+  the reference application, and the analysis pipeline. The measurement archive
+  behind the paper's tables is not distributed here.
+type: software
+# Author metadata is intentionally omitted until publication. Fill in the
+# author list and the DOI/URL from the published record before releasing.
+authors:
+  - name: "The VISTA Authors"
+license: MIT
+keywords:
+  - cyber-physical systems
+  - edge computing
+  - load shedding
+  - multi-camera perception
+  - real-time inference
+  - age of information
+  - DeepStream
+  - Jetson
+preferred-citation:
+  type: article
+  title: "VISTA: Value-Driven Inference Scheduling for Timely Autonomous Multi-Camera Perception"
+  journal: "IEEE Systems, Man, and Cybernetics Letters"
+  year: 2026
+  authors:
+    - name: "The VISTA Authors"

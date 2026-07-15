@@ -1,0 +1,48 @@
+# =============================================================================
+# mux_config.txt — NEW nvstreammux batching config (C++ app / USE_NEW_NVSTREAMMUX).
+#
+# Loaded via the mux's config-file-path property (see cpp/src/pipeline_builder.cpp;
+# override with --mux-config, or --mux-config none to run on built-in defaults).
+# The legacy-mux Python app ignores this file entirely.
+#
+# Key choices for THIS project (4 free-running ~30 fps cameras, one shared
+# YOLO11n pass per batch):
+#   max-same-source-frames=1  a batch never carries two frames of one camera —
+#                             reproduces the legacy one-frame-per-camera batches
+#                             the rest of the tooling (metrics, analyze.py) assumes.
+#   max-fps-control=0         no artificial throttling; batch cadence is set by
+#                             camera delivery + batched-push-timeout (property).
+#   overall-min-fps=30        the FLOOR cadence at which the mux pushes a batch
+#                             even if incomplete. Governs sync-on: with
+#                             sync-inputs=1 and free-running cameras, batches
+#                             rarely complete, and the mux pushes the partial
+#                             batch at this rate (measured: min-fps=5 → one
+#                             1-2 frame batch every 200 ms). BUT it also held
+#                             FULL baseline batches back ~115 ms (measured:
+#                             e2e p50 162.7 ms with this file vs 28.3 ms with
+#                             min-fps=120). For latency work use a min-fps=120
+#                             INI or --mux-config none; see
+#                             experiments/results/param_sweep_locked/README.md.
+#                             (errata 2026-07-07: this header used to claim
+#                             "30 ≈ legacy 33 ms batched-push-timeout
+#                             behaviour" — wrong; see above.)
+#
+# Landmine: the batched-push-timeout PROPERTY and this file's overall-min-fps
+# are the SAME internal knob — last writer wins (nvstreammux_batch.cpp:333).
+# The app used to set the property BEFORE loading this INI, so this file
+# silently overrode every --timeout-us. Fixed 2026-07-07: the INI is loaded
+# first and the CLI property now wins.
+# =============================================================================
+
+[property]
+# algorithm-type=1: round-robin batching across sources (the only shipped type).
+algorithm-type=1
+# Throttling off (0). Set 1 + tune overall-max-fps to cap the mux push rate.
+max-fps-control=0
+# Upper/lower fps bounds used by the batching algorithm (fractions: n/d).
+overall-max-fps-n=120
+overall-max-fps-d=1
+overall-min-fps-n=30
+overall-min-fps-d=1
+# At most 1 frame per camera per batch (see header comment).
+max-same-source-frames=1

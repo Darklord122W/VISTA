@@ -1,0 +1,6 @@
+# Build products. The binary is hardware-specific (Jetson aarch64 + DeepStream
+# 7.1) — build it, don't ship it.
+src/*.o
+src/*.d
+build/
+vista_multicam

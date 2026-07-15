@@ -1,0 +1,69 @@
+# minimal_pgie.txt — nvinfer (PGIE) config for the VISTA integration example.
+#
+# YOLO11n FP16, the paper's lightest detector. This example exists to prove the
+# integration contract, not to reproduce the paper's numbers, so the detector
+# choice only has to be fast enough to leave the pipeline oversubscribed.
+#
+# IMPORTANT: this is a GLib GKeyFile. It only supports comments on their OWN
+# line. A trailing "key=value  # note" makes the note part of the value and
+# nvinfer fails with "Failed to parse group property". Hence the layout below.
+#
+# Paths are resolved by nvinfer RELATIVE TO THIS FILE, so the example runs from
+# any working directory. They point at <repo>/models/, which does NOT ship with
+# this repository: model weights are ~6.4 GB, and TensorRT engines are specific
+# to the exact GPU, driver, TensorRT and DeepStream version that built them — a
+# shipped engine would be silently WRONG on your machine. Populate models/ with
+# the repository's download + build_engine recipes (see the top-level README)
+# before running this example.
+#
+# NOTE ON batch-size: the value here is a FALLBACK. main.cpp sets the nvinfer
+# batch-size PROPERTY to k after setting config-file-path, and the last writer
+# wins. VISTA's strict check throws if the effective value is not k, so a stale
+# number here cannot silently corrupt a run.
+
+[property]
+gpu-id=0
+
+# net-scale-factor = 1/255: normalize pixels to [0,1] (how the ONNX was exported)
+net-scale-factor=0.0039215697906911373
+# model-color-format=0 -> RGB (YOLO11 channel order)
+model-color-format=0
+
+onnx-file=../../../models/yolo11n.onnx
+labelfile-path=../../../models/labels.txt
+# Dynamic-batch FP16 engine (min 1, max 4): one engine serves any k in 1..4.
+# If this file is absent nvinfer BUILDS it from the ONNX above on first launch,
+# which takes minutes and is why the app prints a warning at startup.
+model-engine-file=../../../models/yolo11n.onnx_b4_gpu0_fp16.engine
+
+# Fallback only — overridden to k at runtime (see the note above).
+batch-size=4
+# network-mode: 0=FP32, 1=INT8, 2=FP16. FP16 ~2x throughput on Orin, no calib.
+network-mode=2
+# network-type=0 -> detector
+network-type=0
+num-detected-classes=80
+# interval=0 -> infer on every frame. VISTA decides what to skip; letting
+# nvinfer also skip frames would put two shedding policies in series.
+interval=0
+gie-unique-id=1
+# process-mode=1 -> primary (full-frame) inference
+process-mode=1
+# cluster-mode=2 -> NMS clustering (YOLO outputs raw boxes; nvinfer runs NMS)
+cluster-mode=2
+
+# YOLO11 letterbox: keep aspect ratio with symmetric (centered) padding
+maintain-aspect-ratio=1
+symmetric-padding=1
+
+# Custom YOLO bbox parser, built by the repository's model recipes.
+# NvDsInferParseYoloCuda decodes boxes on the GPU.
+parse-bbox-func-name=NvDsInferParseYoloCuda
+custom-lib-path=../../../models/nvdsinfer_custom_impl_Yolo/libnvdsinfer_custom_impl_Yolo.so
+engine-create-func-name=NvDsInferYoloCudaEngineGet
+
+[class-attrs-all]
+nms-iou-threshold=0.45
+# pre-cluster-threshold = detection confidence floor
+pre-cluster-threshold=0.25
+topk=300

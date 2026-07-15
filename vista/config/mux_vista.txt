@@ -1,0 +1,82 @@
+# mux_vista.txt — NEW-nvstreammux INI for VISTA scheduler runs.
+#
+# THIS FILE IS MECHANISM, NOT DECORATION. Every key below was measured, and a
+# wrong value degrades SILENTLY: the run still completes, still writes
+# detections, and still reports plausible latencies — it just no longer measures
+# what you think it measures. VISTA's runtime batch-atomicity gate (SchedCfg::
+# gate_check, on by default) exists precisely because this file cannot be
+# validated by reading GObject properties: nvstreammux does not expose its
+# INI-derived state. If fewer than 90% of completed batches carry exactly k
+# frames, the gate prints a loud warning and you should come back here.
+#
+# The keys are byte-identical to the paper's config/mux_sched.txt. Only the
+# comments and the filename changed (SPARQ -> VISTA). Do not "tidy" the values.
+#
+# ---------------------------------------------------------------------------
+# WHY THE DEADLINE ANCHORS ARE PUSHED FAR OUT
+# ---------------------------------------------------------------------------
+# VISTA releases exactly K frames per service (the app sets mux batch-size = K),
+# so the batch completes via the mux's is_ready() the moment the K-th buffer
+# lands, and pushes immediately. The mux's own push deadlines must therefore
+# never fire first — they exist only as a backstop. Both anchors are computed
+# from last_batch_time (nvstreammux_batch.cpp:96), so a tight INI (e.g. the
+# 1 ms deadline that a naive "low latency" reading suggests) has BOTH anchors
+# already expired by the time a release begins. The mux then force-pushes the
+# first buffer of the burst on its own, and every K-burst splits into a batch of
+# 1 followed by a batch of K-1. Inference then runs twice per release at the
+# wrong fill, service time changes, and the completion clock VISTA is built on
+# is no longer counting what it claims to count. This is measured — it is gate
+# G1 of the campaign, and it is the reason the gate is also enforced at runtime.
+#
+#   overall-min-fps=2  -> max_dur_time = last_batch + 500 ms
+#   overall-max-fps=5  -> min_dur_time = last_batch + 200 ms
+#
+# Both are far longer than any K-burst takes to assemble (the K buffers are
+# pushed back-to-back, microseconds apart, by the release thread), so in normal
+# operation neither anchor is ever reached. Constraint: overall-max-fps must be
+# >= overall-min-fps, which is why these are 5 and 2 rather than one key.
+#
+# ---------------------------------------------------------------------------
+# WHY THERE IS DELIBERATELY NO batch-size KEY
+# ---------------------------------------------------------------------------
+# The INI is (re)read at state change — that is, AFTER the app has set its
+# GObject properties. Last writer wins, so a batch-size key here would silently
+# override the app's batch-size=K and break burst completion. Leaving it out is
+# what lets the app own K. (This is the same property/INI aliasing that makes
+# the batched-push-timeout PROPERTY inert on DS 7.1: the mux re-reads its INI
+# and defaults at state change and discards what the property set. The INI is
+# the only push-deadline knob that works on this build.)
+#
+# The corollary matters for anyone editing this file: you cannot fix a
+# batch-size mismatch here. Fix it in the app, and let VISTA's strict check
+# (mux batch-size == k, which IS property-readable) catch it for you.
+
+[property]
+# algorithm-type=1 — the round-robin batching algorithm. This is the only
+# algorithm whose is_ready() semantics match "push as soon as the batch is
+# full", which is what makes a K-burst land as one batch.
+algorithm-type=1
+# adaptive-batching would override the app's batch-size=K with the source
+# count (measured: K=2 releases merged into batches of 4) — disable it.
+# Note the failure direction: with adaptive-batching=1 the batches get BIGGER,
+# not smaller, so throughput looks fine and only the fill histogram reveals it.
+adaptive-batching=0
+# See the deadline discussion above: min-fps 2 -> a 500 ms max_dur_time
+# backstop; the burst always completes long before this.
+overall-min-fps-n=2
+overall-min-fps-d=1
+# max-fps 5 -> a 200 ms min_dur_time backstop. Must be >= min-fps.
+overall-max-fps-n=5
+overall-max-fps-d=1
+# max-fps-control=0 — do not let the mux throttle the batch rate to an fps
+# target. VISTA's release gate is the rate control; two rate controllers in
+# series would fight, and the mux's would win invisibly.
+max-fps-control=0
+# max-same-source-frames=2 lets an active camera contribute its fresh frame
+# plus one salvage (held) frame to the same batch (mode=salvage). It is 2 and
+# not 1 because a value of 1 would make the mux drop the second frame of such a
+# pair — after VISTA had already counted it as admitted, breaking the ledger.
+# For mode=fresh/imp with stash=1 no camera can offer two frames in one release
+# anyway, so this key is inert on the paper's headline configurations; it is
+# kept at 2 so one INI serves every mode.
+max-same-source-frames=2

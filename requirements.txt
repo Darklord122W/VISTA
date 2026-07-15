@@ -1,0 +1,30 @@
+# Python dependencies for the VISTA analysis toolchain.
+#
+# This is the whole list. Everything under analysis/ and figures/src/ is
+# standard library plus these two: the parsers use csv/json/gzip/statistics,
+# the tables are printed with str.format, and no scoring code touches numpy
+# directly (matplotlib brings numpy with it).
+#
+#     python3 -m pip install -r requirements.txt
+#
+# Verified on the reference machine: Python 3.10.12, matplotlib 3.5.1,
+# PyYAML 5.4.1 (Ubuntu 22.04 / JetPack 6 stock).
+
+# HARD PIN, not a preference. The figure generators position labels by hand in
+# data coordinates against curves whose layout depends on the engine version;
+# figures/README.md documents which ones break and how. 3.5.1 is the version
+# the generators were developed against. Only figures/src/*.py need matplotlib;
+# the table generators under analysis/ do not.
+matplotlib==3.5.1
+
+# Reads analysis/campaigns.yaml, the paper-row -> run-dir registry. Any 5.x or
+# 6.x works; the registry uses no tags and no anchors. 5.4.1 here.
+pyyaml
+
+# NOT required, and deliberately absent:
+#   opencv-python — only scripts/make_skew_clips.py needs it (and it needs a
+#     GStreamer-enabled build, which pip's wheel is not; use the distro's
+#     python3-opencv). Building the microbenchmark clips is optional; see
+#     scripts/README.md.
+#   Anything to READ run data. dets.jsonl[.gz] is gzip + JSON lines; both are
+#     stdlib. No run data ships here anyway — see analysis/README.md.

@@ -1,0 +1,901 @@
+# campaigns.yaml — paper row -> run dirs -> oracle -> metric -> n.
+#
+# THE single source of truth for provenance. No script under analysis/ may
+# hardcode a run path; every generator resolves rows through this file.
+#
+# ---------------------------------------------------------------------------
+# THE RUNS THIS FILE NAMES ARE NOT IN THIS REPOSITORY
+# ---------------------------------------------------------------------------
+# The measurement archive is not distributed here: this artifact ships code,
+# not runs. Every path below is RELATIVE TO $VISTA_DATA_ROOT and resolves only
+# against a directory of campaign run directories that you supply — produce one
+# with harness/run_campaign.sh on a Jetson (see harness/README.md). With
+# VISTA_DATA_ROOT unset, every script that reads this file exits with one
+# message saying so; nothing here silently resolves to nothing.
+#
+# This file ships anyway, and is worth reading on its own: it is the
+# machine-readable map from each of the draft's table rows to the arm
+# configuration, flags, oracle, metric and repeat count that produce it, and it
+# carries the evidence for every claim it makes — including which of the
+# original archive's labels are wrong. It is the specification of the
+# experiment, which is reusable; the runs were one execution of it.
+#
+# Statements below about what the archive "contains", what was "verified", or
+# what a row "measures" are findings about the ORIGINAL runs, recorded here so
+# the map stays honest. They are not claims about anything in this repository,
+# and this repository ships no evidence for them.
+#
+# ---------------------------------------------------------------------------
+# NAMING (read this before touching anything)
+# ---------------------------------------------------------------------------
+# The directory names on disk are the ORIGINAL experiment names and are
+# load-bearing: the archived analysis JSONs key off them. They are mapped to
+# the paper's policy names HERE, never by renaming directories.
+#
+#   PAPER NAME         internal / on-disk
+#   Stock-Default      fifo33
+#   Stock-LiveDepth    fifo-s2  (label only; the dirs are e7_surfcal_2,
+#                                e7_s2_r1, e7_s2_r2 — --replay-surfaces 2)
+#   Static-Decimation  dec13 / e3_m_decimate3  (--gap-every 3)
+#   VISTA-Fresh        fresh-k2
+#   VISTA-Activity     imp-k2
+#   (all-admit abl.)   fresh-k4
+#
+# TRAP: e3_m_decimate  == DEC-1/2, --gap-every 4, mean age 997 ms — the
+#       STALEST config measured, a diagnostic only.
+#       e3_m_decimate3 == DEC-1/3, --gap-every 3, mean age  64 ms — this is
+#       Static-Decimation, a Table II row.
+#       Confusing them moves Fig. 3's Static-Decimation point by ~930 ms with
+#       no error raised anywhere.
+#
+# THE "1/2" AND "1/3" LABELS ARE LITERAL KEEP-FRACTIONS, not descriptions of a
+# measured effect. --gap-every N drops TWO CONSECUTIVE frames out of every N
+# (pipeline_builder.cpp:203-205, `(idx + gap_phase) % gap_every < 2`), so it
+# KEEPS exactly (N-2)/N of the frames:
+#       --gap-every 4 -> keeps (4-2)/4 = 1/2  -> DEC-1/2  (e3_m_decimate)
+#       --gap-every 3 -> keeps (3-2)/3 = 1/3  -> DEC-1/3  (Static-Decimation)
+#       --gap-every 44 -> keeps 42/44 = 0.9545 -> the live-rate reference
+# The name maps to the keep-fraction, NOT to the flag value. Reading "DEC-1/2"
+# as "--gap-every 2" is the exact error this registry carried until 2026-07-15.
+# --gap-every 2 is in fact IMPOSSIBLE as a decimation setting: (idx+phase) % 2
+# is always < 2, so it would keep (2-2)/2 = ZERO frames and deliver nothing.
+#
+# Nominal offered load follows the same formula the design docs use
+# (docs/design/02-deepstream-pipeline.md §4), 4 cams x (30/0.961) x (N-2)/N:
+#       gap-44 -> 119.2 f/s (rho=1.86)   gap-4 -> 62.4 f/s (rho=0.98)
+#       gap-3  ->  41.6 f/s (rho=0.65)
+# VERIFIED against the archived metrics.csv (arrivals_cum slope, 5 s warmup
+# trim): gap-3 measures 41.61 f/s vs 41.62 nominal — an exact match, which is
+# what confirms the (N-2)/N mechanism. gap-4 (56.27) and gap-44 (62.64) measure
+# BELOW nominal because at those offered loads the replay/decode path is itself
+# the bottleneck; that shortfall is a property of the harness, not of the gap
+# arithmetic, and it does not affect any published cell.
+#
+# TRAP: --gap-every is overloaded. 44 = live-rate timing fidelity (every
+#       normal run uses it). 3 = the Static-Decimation baseline. 4 = DEC-1/2.
+#
+# ---------------------------------------------------------------------------
+# STASH: every row's TRUE value, and the one place the paper disagrees
+# ---------------------------------------------------------------------------
+# Every scheduler row below carries explicit `stash:` and `depth:` keys. They
+# record what the RUN DID, never what the paper says. Where they disagree, the
+# row carries a `stash_note:` saying so. Census done 2026-07-15 over every
+# run_meta.json `cmd` and every [sched] banner; the finding is summarised in
+# KNOWN-ISSUES.md.
+#
+# READ THE BANNER, NOT JUST THE FLAGS. The archive spans two binaries:
+#   "[sched] mode=imp k=2 depth=2 tau_max=..."         <- PRE-stash build.
+#        No stash field. The flag did not exist; a single fresh[c] slot was
+#        hardwired == stash 1 (docs/design/04 §6.1). 80 of 107 sched runs.
+#   "[sched] mode=imp k=2 depth=2 stash=N tau_max=..."  <- POST-stash build.
+#        27 runs. Only these can express stash != 1.
+# An ABSENT --sched-stash therefore means stash 1 twice over: it is the
+# SchedCfg default AND, on the pre-stash build, the only reachable value.
+# Corroboration that the two builds agree at stash 1: e9_depth2 (pre) vs
+# e9_depth2_v2 (post, prints stash=1) — same arm, same clips — median mean age
+# 112.8 vs 116.3 ms, within run-to-run spread.
+#
+# TRAP, and the reason this block exists: --sched-stash 2 appears in exactly 13
+# runs and ALL of them are on the SKEW clips (briefS2_*, persS2_*,
+# _sanity_stash2). ZERO stash-2 runs exist on myclipsForEXP in ANY mode. The
+# paper's §IV-A declares VISTA-Activity's config to be "K=2, d=2, and a
+# two-frame stash", but the primary-workload VISTA-Activity data (e8_impfix_*,
+# = Fig. 3's point, = the old Table II row) is STASH 1 on a pre-stash build.
+# Do not "fix" this by editing the stash values below to match the paper —
+# the data is what it is; the mismatch is the finding. See KNOWN-ISSUES.md.
+#
+# ---------------------------------------------------------------------------
+# EVIDENCE STATUS of every `notes:` field below
+# ---------------------------------------------------------------------------
+# Claims marked VERIFIED were re-derived from the archived raw data during
+# this artifact's assembly (2026-07-15) by rerunning match_events.py and
+# comparing to the archived JSONs / paper cells. Claims marked LEAD are
+# plausible reconstructions that were NOT independently confirmed.
+# ---------------------------------------------------------------------------
+
+meta:
+  paper: "VISTA: Value-Driven Inference Scheduling for Timely Autonomous Multi-Camera Perception"
+  data_root_env: VISTA_DATA_ROOT      # required; no default, no run data ships
+  # run_meta.json's `git_sha` is NOT a reliable build identifier: the binary
+  # that produced these runs exists in no commit (--sched-stash is absent from
+  # every commit; 3 files were dirty at run time). run_meta.json's `cmd` array
+  # IS reliable — it is the literal argv — and is what the provenance notes
+  # below cite. Where a sha is quoted it is used only to show that two run
+  # groups came from DIFFERENT builds, not to identify either build.
+  platform: "Jetson AGX Orin 64GB, 30W, GPU locked 612 MHz, DeepStream 7.1, FP16 TensorRT"
+  workload_replay: "4x 640x480 office clips, --gap-every 44, --skew-ms 0,1134.8,1702.1,567.2"
+
+# ---------------------------------------------------------------------------
+# ORACLES / REFERENCES
+# ---------------------------------------------------------------------------
+oracles:
+  office_x:
+    run_dir: oracle_x/ref_r0
+    detector: yolo11x
+    conf: 0.40
+    n_events: 123
+    notes: >-
+      VERIFIED: rebuilding from the archived dets gives 6415 frames, 9715
+      detections, 123 events (>=3 frames, IoU-track 0.30) — matches the
+      paper's 123. This is the reference for Tables II and III. Its frame
+      count (6415) is the coverage DENOMINATOR: frames carrying at least one
+      conf>=0.40 oracle detection, not the 6882 frames the cameras produced.
+      See README.md, "Coverage denominator".
+
+  brief_x:
+    run_dir: charBrief_x/ref_r0
+    detector: yolo11x
+    conf: 0.40
+    n_events: 368
+    notes: >-
+      Reference for the BRIEF composited skew clip set (~4-frame crossings).
+      VERIFIED: recall_brief.json records n_events=368, matching the paper's
+      "368 brief".
+
+  pers_x:
+    run_dir: charImp_x/ref_r0
+    detector: yolo11x
+    conf: 0.40
+    n_events: 257
+    notes: >-
+      Reference for the PERSISTENT composited skew clip set (~0.9 s objects).
+      VERIFIED: recall_impcmp.json records n_events=257, matching the paper's
+      "257 persistent".
+
+  ref_m:
+    run_dir: ref_m/ref_r0
+    detector: yolo11m
+    conf: 0.40
+    notes: >-
+      SAME-MODEL completeness reference (ring=0, every frame processed). Used
+      by clean_events.py to separate scheduling loss from detector capability.
+      Not an event oracle. Mean n_in_batch = 3.798, i.e. this reference is a
+      batch-4 run, not a batch-1 one. An earlier revision of the paper called
+      it a "batch-1 baseline"; that sentence has since been removed, so this
+      records what the run is, not an open defect.
+  ref_s: {run_dir: ref_s/ref_r0, detector: yolo11s, conf: 0.40}
+  ref_l: {run_dir: ref_l/ref_r0, detector: yolo11l, conf: 0.40}
+
+# ---------------------------------------------------------------------------
+# TABLE I — detector capacity (implementation.tex, \label{tab:capacity})
+# ---------------------------------------------------------------------------
+tables:
+  table1:
+    caption: "Detector capacity on the 612 MHz-locked Orin GPU"
+    generator: e1_figures.py
+    metric: throughput            # no oracle involved
+    oracle: null
+    rows:
+      - paper_name: YOLO11n
+        internal_arm: e1_yolo11n
+        run_dirs: [e1_yolo11n]
+        n_repeats: 1
+        notes: >-
+          Deadline sweep, one campaign dir holding push_{5,10,20,33.3,66.7}ms
+          .csv + summary.csv. rho=0.84: never saturates, so S(1)=8.8ms and
+          S(4)=28.3ms are measured compute directly. This arm's arrivals also
+          define the PACED-INPUT baseline used by count_drops.py and
+          frame_funnel_fig.py (it is the only model whose transport ring never
+          overflows).
+      - paper_name: YOLO11s
+        internal_arm: e1_yolo11s
+        run_dirs: [e1_yolo11s]
+        n_repeats: 1
+        notes: "rho=1.00, capacity boundary. Saturated => S(4) derived from throughput (4000/capacity), S(1) not measurable."
+      - paper_name: YOLO11m
+        internal_arm: e1_yolo11m
+        run_dirs: [e1_yolo11m]
+        n_repeats: 1
+        notes: "rho=1.86, the primary operating point of Tables II and IV."
+      - paper_name: YOLO11l
+        internal_arm: e1_yolo11l
+        run_dirs: [e1_yolo11l]
+        n_repeats: 1
+        notes: "rho=2.33, severe overload."
+
+  # -------------------------------------------------------------------------
+  # TABLE II — main policy comparison, YOLO11m, rho=1.86 (tab:policy)
+  # -------------------------------------------------------------------------
+  # Columns: cov (%) | age (ms) | p99 (ms) | yield (%) | TTA@0.5s (%)
+  # Paper cells:
+  #   Stock-Default     46.2 | 857 | 1032 | 34.2 |  0.0
+  #   Stock-LiveDepth   44.8 | 410 |  601 | 37.6 | 18.7
+  #   Static-Decimation 29.9 |  64 |  123 | 21.5 | 30.1
+  #   VISTA-Fresh       38.8 |  93 |  139 | 28.6 | 30.1
+  #   VISTA-Activity    31.7 | 115 |  200 | 23.3 | 28.5
+  #
+  # PROVENANCE DEFECT (verified, and the single most important note in this
+  # file): Table II's numbers are REAL and come from the CORRECT runs. What is
+  # wrong is the LABELLING inside recall_m2.json, the file the table was built
+  # from. Two of its `run` strings name directories that either hold different
+  # data or do not exist. This is a labelling defect, NOT fabricated data —
+  # be precise about that distinction. Both mislabels are resolved below and
+  # every cell reproduces from the resolved sources.
+  # -------------------------------------------------------------------------
+  table2:
+    caption: "Main policy comparison at YOLO11m (rho=1.86), medians over repeats"
+    generator: make_table2.py
+    oracle: office_x
+    metric: tta_recall            # EMISSION time. Table IV uses event_recall.
+    delta_ms: 500
+    columns: [coverage_vs_oracle, e2e_mean, e2e_p99, det_yield_overall, tta_recall@500ms]
+    derived_json: recall_m2.json
+    notes: >-
+      The `age` and `p99` columns come from each run's metrics.csv (post-5s
+      warmup trim); the other three come from the oracle scoring JSON. The
+      paper's immediate ancestor for this table is figures/e3_table_m.tex,
+      which its own header comment says was "reordered" by hand — it is a
+      manual composite across four campaigns, not a single generator's output.
+      make_table2.py reconstructs it from the resolved sources below.
+    rows:
+      - paper_name: Stock-Default
+        internal_arm: fifo33
+        oracle: office_x
+        metric: tta_recall
+        n_repeats: 5
+        run_dirs:
+          - e3_m/fifo33_r0
+          - e3_m/fifo33_r1
+          - e3_m/fifo33_r2
+          - e3_m/fifo33_r3
+          - e3_m/fifo33_r4
+        notes: >-
+          VERIFIED: label and directory agree; all five cells reproduce.
+          Stock DeepStream, default nvstreammux pool depth, no scheduler.
+
+      - paper_name: Stock-LiveDepth
+        internal_arm: fifo-s2
+        oracle: office_x
+        metric: tta_recall
+        n_repeats: 3
+        run_dirs:
+          - e7_surfcal_2/fifo33_r0
+          - e7_s2_r1/fifo33_r0
+          - e7_s2_r2/fifo33_r0
+        notes: >-
+          MISLABEL RESOLVED (VERIFIED). recall_m2.json labels these three rows
+          "experiments/results/e3_m/fifo-s2_r{0,1,2}". NO SUCH DIRECTORY HAS
+          EVER EXISTED — e3_m contains only fifo33/fifo5/dropold/fresh-k4/
+          fresh-k2/imp-k2/salv-k2. Re-scoring the three dirs listed above
+          against oracle_x reproduces the archived rows EXACTLY, to four
+          decimals, on every metric:
+            e7_surfcal_2/fifo33_r0 -> cov .4664 age 389.40 yield .3898 tta .2033
+            e7_s2_r1/fifo33_r0     -> cov .4461 age 416.95 yield .3745 tta .1870
+            e7_s2_r2/fifo33_r0     -> cov .4485 age 409.66 yield .3764 tta .1870
+          Corroborated independently: clean_events.py's "FIFO-s2" arm lists
+          exactly these three dirs, and all three run_meta.json cmd arrays
+          carry --replay-surfaces 2 (the live-calibrated pool depth) with no
+          --sched flag. The label was an alias for the arm, not a path.
+
+      - paper_name: Static-Decimation
+        internal_arm: dec13
+        oracle: office_x
+        metric: tta_recall
+        n_repeats: 3
+        run_dirs:
+          - e3_m_decimate3_r0/fifo33_r0
+          - e3_m_decimate3_r1/fifo33_r0
+          - e3_m_decimate3_r2/fifo33_r0
+        notes: >-
+          --gap-every 3 (VERIFIED in all three run_meta.json cmd arrays), which
+          KEEPS (3-2)/3 = 1/3 of frames — the "1/3" in the name is the literal
+          keep-fraction, not the flag value. This is DEC-1/3, NOT e3_m_decimate
+          (DEC-1/2, --gap-every 4, 997 ms).
+          n DISCREPANCY (VERIFIED): the archived recall_m_decimate.json scored
+          only r0 and r1, and the row is often described as n=2. But the
+          paper's p99 cell (123) is the median over THREE repeats
+          (121.27/126.00/123.06 -> 123.06 -> "123"); n=2 would give
+          (121.27+126.00)/2 = 123.635 -> "124". The paper's row is therefore a
+          mixed-n composite: oracle columns at n=2, age/p99 at n=3. This is
+          harmless here and we resolve it to a uniform n=3, which reproduces
+          all five cells exactly, because this arm is DETERMINISTIC in the
+          oracle columns: cov .2987, yield .2151, TTA .3008 are bit-identical
+          across r0/r1/r2 (a fixed 1/3 decimation of a deterministic replay
+          processes exactly the same frames every time). Only p99 varies.
+
+      - paper_name: VISTA-Fresh
+        internal_arm: fresh-k2
+        oracle: office_x
+        metric: tta_recall
+        n_repeats: 5
+        stash: 1          # VERIFIED: pre-stash build; stash=1 is also correct
+        depth: 2          # for VISTA-Fresh per the paper (w_i=0 -> keep-newest)
+        run_dirs:
+          - e3_m/fresh-k2_r0
+          - e3_m/fresh-k2_r1
+          - e3_m/fresh-k2_r2
+          - e3_m/fresh-k2_r3
+          - e3_m/fresh-k2_r4
+        notes: >-
+          VERIFIED: label and directory agree; all five cells reproduce.
+          Defaults: K=2, d=2, stash=1, w = 0.40/0.35/0.25 with w_i inactive.
+          The stash=1 here MATCHES the paper's stated VISTA-Fresh config
+          ("a one-frame per-camera stash") — unlike the VISTA-Activity row
+          below, this row has no configuration mismatch.
+
+      - paper_name: VISTA-Activity
+        internal_arm: imp-k2
+        oracle: office_x
+        metric: tta_recall
+        n_repeats: 3
+        run_dirs:
+          - e8_impfix_r0/imp-k2_r0
+          - e8_impfix_r1/imp-k2_r0
+          - e8_impfix_r2/imp-k2_r0
+        stash: 1          # VERIFIED — see stash_note below. The paper says 2.
+        depth: 2
+        stash_note: >-
+          CONFIGURATION MISMATCH vs the current draft (VERIFIED 2026-07-15;
+          summarised in KNOWN-ISSUES.md). The draft's Sec. IV-A declares
+          VISTA-Activity's evaluated configuration to be "K=2, d=2, and a
+          two-frame stash". These runs are stash=1. Their cmd tail is exactly
+            --sched imp --sched-k 2 --sched-csv <run>/sched.csv --duration 52.0
+          — no --sched-depth (default 2), no --sched-stash (default 1; see
+          SchedCfg in vista/include/vista/vista_scheduler.hpp).
+          Stronger than "defaulted": their [sched] banner emits NO stash field
+          at all, i.e. a PRE-stash build that could not express any other
+          value. docs/design/04 Sec. 6.1 records the same fact from the other
+          side ("v1 hardwired stash = 1 ... no --sched-stash flag to sweep").
+          NO stash-2 run exists on myclipsForEXP in ANY mode — the 13 stash-2
+          runs are all on the skew clips (briefS2_*, persS2_*, _sanity_stash2).
+          So Fig. 3's VISTA-Activity point plots stash-1 data while Sec. IV-A
+          declares stash 2. The RQ1 null ("no additional benefit on this
+          approximately uniform-activity workload") is consequently confounded:
+          docs/design/04 Sec. 3 shows stash 1 caps any camera's share at
+          min(stash,d)/(K*d) = 25% regardless of weight, so "uniform workload"
+          and "capped by stash 1" are not separable from this data.
+          docs/design/04 Sec. 6.2 argues for the uniform-workload reading from
+          the office clips' 37/33/28/25 event split — an argument, not a
+          measurement. AUTHOR DECISION REQUIRED; do not silently relabel.
+        notes: >-
+          MISLABEL RESOLVED (VERIFIED). recall_m2.json labels these three rows
+          "experiments/results/e3_m/imp-k2_r{0,1,2}". Those directories DO
+          exist, but they hold DIFFERENT (pre-importance-bugfix) data. The
+          values in recall_m2.json's imp-k2 rows are BYTE-IDENTICAL to
+          recall_e78.json's e8_impfix_r{0,1,2}/imp-k2_r0 rows:
+            cov .3431 age 109.07 | cov .3166 age 115.47 | cov .3090 age 120.60
+          whose median (31.7 / 115 / 23.3 / 28.5) is exactly Table II's row.
+          The real e3_m/imp-k2_r{0,1,2} data is cov .3853/.3743/.3991, age
+          95.32/97.83/92.18 (see recall_m.json, quarantined) — it contradicts
+          Table II on every cell.
+          So: Table II's VISTA-Activity NUMBERS ARE THE CORRECT POST-BUGFIX
+          ONES. Only the provenance string is wrong. A labelling defect, not
+          fabricated data.
+          Build evidence (VERIFIED): e3_m/imp-k2_r0 ran 2026-07-08 19:32 under
+          recorded sha 7f98270; e8_impfix_r0/imp-k2_r0 ran 21:44 under
+          e514f5f. The shas identify no real commit, but their DIFFERENCE plus
+          the timeline plus the ~7-point coverage shift is consistent evidence
+          of two different builds.
+
+  # -------------------------------------------------------------------------
+  # TABLE III — other two load points (tab:policy-sl)
+  # -------------------------------------------------------------------------
+  # Paper cells:
+  #   YOLO11s rho=1.00: Stock 78.6/497/609/62.5/22.8
+  #                     VISTA-Fresh 69.3/58/78/55.2/35.8
+  #                     VISTA-Activity 68.4/60/89/54.5/35.8
+  #   YOLO11l rho=2.33: Stock 33.7/1112/1280/24.6/0.0
+  #                     VISTA-Fresh 28.8/121/186/20.7/21.1
+  #                     VISTA-Activity 28.7/122/187/20.9/19.5
+  # -------------------------------------------------------------------------
+  table3:
+    caption: "Policy comparison at the other two load points (medians)"
+    generator: make_table3.py
+    oracle: office_x
+    metric: tta_recall
+    delta_ms: 500
+    derived_json: [recall_s.json, recall_l.json]
+    notes: >-
+      VERIFIED: unlike Table II this table reproduces cleanly from a single
+      generator's output per model — every cell equals the corresponding
+      e3_s_aggregate.json / e3_l_aggregate.json entry, which policy_report.py
+      produces from these dirs. No mislabels found.
+    rows:
+      - paper_name: Stock-Default
+        internal_arm: fifo33
+        load_point: "yolo11s rho=1.00"
+        oracle: office_x
+        metric: tta_recall
+        n_repeats: 3
+        run_dirs: [e3_s/fifo33_r0, e3_s/fifo33_r1, e3_s/fifo33_r2]
+        notes: >-
+          NOTE on the TTA@0.5s cell (22.8): the three repeats are 0.0 / 24.4 /
+          22.8 and the median is 22.8. r0's zero is not noise in the policy —
+          its mean age (500.54 ms) sits a hair ABOVE the 500 ms deadline while
+          r1/r2 (497.34 / 495.09) sit just below, and TTA charges every match
+          the run's MEAN age. The metric is discontinuous at age == delta, so
+          this arm's TTA@0.5s is a coin flip at rho=1.00. The paper's 22.8 is
+          the correct median but the cell is fragile; do not read it as a
+          stable estimate. VERIFIED from recall_s.json.
+      - paper_name: VISTA-Fresh
+        internal_arm: fresh-k2
+        load_point: "yolo11s rho=1.00"
+        oracle: office_x
+        metric: tta_recall
+        n_repeats: 3
+        stash: 1          # VERIFIED: pre-stash build; matches the paper's
+        depth: 2          # stated VISTA-Fresh config (one-frame stash).
+        run_dirs: [e3_s/fresh-k2_r0, e3_s/fresh-k2_r1, e3_s/fresh-k2_r2]
+        notes: "VERIFIED: all five cells reproduce."
+      - paper_name: VISTA-Activity
+        internal_arm: imp-k2
+        load_point: "yolo11s rho=1.00"
+        oracle: office_x
+        metric: tta_recall
+        n_repeats: 3
+        stash: 1          # VERIFIED: pre-stash build. Paper says 2 —
+        depth: 2          # same mismatch as table2's row; see PROVENANCE §6.
+        run_dirs: [e3_s/imp-k2_r0, e3_s/imp-k2_r1, e3_s/imp-k2_r2]
+        notes: >-
+          PRE-BUGFIX IMPORTANCE CODE (VERIFIED) — the most consequential
+          finding in this file after Table II's mislabels.
+          These runs' run_meta.json cmd arrays are the yolo11s twins of
+          e3_m/imp-k2, and they ran at 2026-07-08 19:54 under recorded sha
+          7f98270 — the SAME build whose YOLO11m output (e3_m/imp-k2) the
+          authors superseded with the e8_impfix re-run at 21:44 under sha
+          e514f5f (see the `superseded:` block at the end of this file).
+          The importance fix was re-run ONLY at YOLO11m. There is no
+          e8_impfix-equivalent campaign at s or l anywhere in the archive.
+          Consequence: Table II's VISTA-Activity row is post-fix while Table
+          III's two VISTA-Activity rows are pre-fix. The two tables therefore
+          describe DIFFERENT importance implementations under the same name.
+          At YOLO11m the fix moved coverage by ~7 points (38.8 -> 31.7); its
+          effect at s/l is UNMEASURED. The rows are recomputable from raw
+          dets, but only for the build that produced them — re-running the
+          fixed build is out of scope for this artifact.
+          The paper does not disclose this. Flagged in the claim->evidence
+          matrix; the author decides.
+      - paper_name: Stock-Default
+        internal_arm: fifo33
+        load_point: "yolo11l rho=2.33"
+        oracle: office_x
+        metric: tta_recall
+        n_repeats: 3
+        run_dirs: [e3_l/fifo33_r0, e3_l/fifo33_r1, e3_l/fifo33_r2]
+        notes: "VERIFIED: all five cells reproduce."
+      - paper_name: VISTA-Fresh
+        internal_arm: fresh-k2
+        load_point: "yolo11l rho=2.33"
+        oracle: office_x
+        metric: tta_recall
+        n_repeats: 3
+        stash: 1          # VERIFIED: pre-stash build; matches the paper's
+        depth: 2          # stated VISTA-Fresh config (one-frame stash).
+        run_dirs: [e3_l/fresh-k2_r0, e3_l/fresh-k2_r1, e3_l/fresh-k2_r2]
+        notes: "VERIFIED: all five cells reproduce."
+      - paper_name: VISTA-Activity
+        internal_arm: imp-k2
+        load_point: "yolo11l rho=2.33"
+        oracle: office_x
+        metric: tta_recall
+        n_repeats: 3
+        stash: 1          # VERIFIED: pre-stash build. Paper says 2 —
+        depth: 2          # same mismatch as table2's row; see PROVENANCE §6.
+        run_dirs: [e3_l/imp-k2_r0, e3_l/imp-k2_r1, e3_l/imp-k2_r2]
+        notes: >-
+          PRE-BUGFIX IMPORTANCE CODE (VERIFIED). Same finding as the YOLO11s
+          VISTA-Activity row above: ran 2026-07-08 20:12 under sha 7f98270,
+          never re-run after the importance fix. See that row's note.
+
+  # -------------------------------------------------------------------------
+  # TABLE IV — skewed-activity microbenchmark (tab:skew)
+  # -------------------------------------------------------------------------
+  # METRIC: event_recall (ONSET / frame time), NOT tta_recall. The caption
+  # says "recall within Delta of onset". This differs from Tables II and III,
+  # which use tta_recall (emission time). Both live in the same JSONs under
+  # different keys, so the mistake is one dictionary key wide. On the brief
+  # set the gap is material: event_recall@250 median .723 vs tta_recall@250
+  # median .682. The abstract's headline 0.30 -> 0.71 is the ONSET metric.
+  #
+  # Paper cells (hot-cam share % | brief @250 | brief @1s | pers @250 | pers @1s):
+  #   VISTA-Fresh, stash 1     25    | 25 | 54 | 47 | 78
+  #   VISTA-Fresh, stash 2     25    | 30 | 57 | 35 | 67
+  #   VISTA-Activity, stash 1  26-29 | 39 | 68 | 48 | 77
+  #   VISTA-Activity, stash 2  48    | 71 | 80 | 77 | 86
+  #
+  # RECOMPUTE REQUIRED (VERIFIED): the stash-2 rows have NO committed scoring
+  # output. No analysis JSON anywhere references briefS2 / persS2 / briefD2ctl;
+  # those run dirs are dated 2026-07-10 14:39, which POSTDATES the newest
+  # analysis JSON in the archive (recall_brief.json, 2026-07-09 23:36). The raw
+  # dets survive, so the rows are recomputable — that is what make_table4.py
+  # does — but nothing in the archive independently corroborates them.
+  # -------------------------------------------------------------------------
+  table4:
+    caption: "Skewed-activity microbenchmark: recall within Delta of onset"
+    generator: make_table4.py
+    metric: event_recall          # <-- ONSET time. Stated explicitly, on purpose.
+    deltas_ms: [250, 1000]
+    n_repeats: 3
+    notes: >-
+      The clip sets are composited extreme-skew isolation clips (cam0 busy,
+      cam1/2 empty, cam3 one rare ~10 s event), not real footage; the paper
+      labels them as such. Each set is scored against its OWN reference
+      detector run, so brief and persistent recalls are not comparable to
+      Tables II/III or to each other in absolute terms.
+      STASH-1 ROW SOURCE (VERIFIED, and contrary to the obvious guess): the
+      brief stash-1 rows are briefD2ctl_*, NOT brief_*. The paper's caption
+      says the grid is "{activity on/off} x {stash 1,2} at d=2", and
+      run_meta.json shows brief_*'s cmd carries --sched-depth 1 while
+      briefD2ctl_*'s carries no depth flag (i.e. the d=2 default) and no
+      --sched-stash (i.e. the stash=1 default). briefD2ctl is therefore the
+      d=2 control added so the stash comparison is apples-to-apples, and
+      "D2ctl" reads as "depth-2 control".
+      Corroboration: the paper's practitioner note says d=1 costs "roughly
+      half the output age"; brief_* (d=1) logs 60 ms mean age vs
+      briefD2ctl_* (d=2) at 118 ms. That is the d=1 note's evidence, and it
+      confirms brief_* is the d=1 arm.
+      The persistent stash-1 rows are impcmp_*, whose cmd also carries no
+      depth/stash flag (d=2, stash=1) — consistent. The caption's "persistent-
+      set stash-1 rows are from the prior campaign" refers to these.
+    rows:
+      - paper_name: "VISTA-Fresh, stash 1"
+        internal_arm: fresh-k2
+        stash: 1
+        depth: 2
+        clip_set: brief
+        oracle: brief_x
+        metric: event_recall
+        n_repeats: 3
+        run_dirs:
+          - briefD2ctl_fresh-k2/fresh-k2_r0
+          - briefD2ctl_fresh-k2/fresh-k2_r1
+          - briefD2ctl_fresh-k2/fresh-k2_r2
+        notes: "No scoring JSON. Recomputed by make_table4.py from raw dets."
+      - paper_name: "VISTA-Fresh, stash 2"
+        internal_arm: fresh-k2
+        stash: 2
+        depth: 2
+        clip_set: brief
+        oracle: brief_x
+        metric: event_recall
+        n_repeats: 3
+        run_dirs:
+          - briefS2_fresh-k2/fresh-k2_r0
+          - briefS2_fresh-k2/fresh-k2_r1
+          - briefS2_fresh-k2/fresh-k2_r2
+        notes: "--sched-stash 2 (VERIFIED in cmd). No scoring JSON."
+      - paper_name: "VISTA-Activity, stash 1"
+        internal_arm: imp-k2
+        stash: 1
+        depth: 2
+        clip_set: brief
+        oracle: brief_x
+        metric: event_recall
+        n_repeats: 3
+        run_dirs:
+          - briefD2ctl_imp-k2/imp-k2_r0
+          - briefD2ctl_imp-k2/imp-k2_r1
+          - briefD2ctl_imp-k2/imp-k2_r2
+        notes: "No scoring JSON."
+      - paper_name: "VISTA-Activity, stash 2"
+        internal_arm: imp-k2
+        stash: 2
+        depth: 2
+        clip_set: brief
+        oracle: brief_x
+        metric: event_recall
+        n_repeats: 3
+        run_dirs:
+          - briefS2_imp-k2/imp-k2_r0
+          - briefS2_imp-k2/imp-k2_r1
+          - briefS2_imp-k2/imp-k2_r2
+        notes: "The headline row (0.71 @250ms). --sched-stash 2. No scoring JSON."
+      - paper_name: "VISTA-Fresh, stash 1"
+        internal_arm: fresh-k2
+        stash: 1
+        depth: 2
+        clip_set: persistent
+        oracle: pers_x
+        metric: event_recall
+        n_repeats: 3
+        run_dirs:
+          - impcmp_fresh-k2_r0/fresh-k2_r0
+          - impcmp_fresh-k2_r1/fresh-k2_r0
+          - impcmp_fresh-k2_r2/fresh-k2_r0
+        notes: "Scored in recall_impcmp.json (the only Table IV rows that are)."
+      - paper_name: "VISTA-Fresh, stash 2"
+        internal_arm: fresh-k2
+        stash: 2
+        depth: 2
+        clip_set: persistent
+        oracle: pers_x
+        metric: event_recall
+        n_repeats: 3
+        run_dirs:
+          - persS2_fresh-k2/fresh-k2_r0
+          - persS2_fresh-k2/fresh-k2_r1
+          - persS2_fresh-k2/fresh-k2_r2
+        notes: "No scoring JSON."
+      - paper_name: "VISTA-Activity, stash 1"
+        internal_arm: imp-k2
+        stash: 1
+        depth: 2
+        clip_set: persistent
+        oracle: pers_x
+        metric: event_recall
+        n_repeats: 3
+        run_dirs:
+          - impcmp_imp-k2_r0/imp-k2_r0
+          - impcmp_imp-k2_r1/imp-k2_r0
+          - impcmp_imp-k2_r2/imp-k2_r0
+        notes: "Scored in recall_impcmp.json."
+      - paper_name: "VISTA-Activity, stash 2"
+        internal_arm: imp-k2
+        stash: 2
+        depth: 2
+        clip_set: persistent
+        oracle: pers_x
+        metric: event_recall
+        n_repeats: 3
+        run_dirs:
+          - persS2_imp-k2/imp-k2_r0
+          - persS2_imp-k2/imp-k2_r1
+          - persS2_imp-k2/imp-k2_r2
+        notes: "No scoring JSON."
+
+  # -------------------------------------------------------------------------
+  # TABLE V — live validation (tab:live)
+  # -------------------------------------------------------------------------
+  table5:
+    caption: "Live validation: 120 s runs on the physical cameras (YOLO11m)"
+    generator: live_report.py
+    oracle: null                  # no oracle exists for live footage
+    metric: throughput_and_age
+    n_repeats: 1
+    notes: >-
+      NO ORACLE AND NO REPEATS. Live footage has no ground truth (an oracle
+      pass would need the frames the stock pipeline never received), so this
+      table reports only frames-seen / throughput / age / drop visibility.
+      Each row is ONE run. The paper's caption says "three 120 s runs"; the
+      archive has three live run dirs (fifo33, imp, salv) — i.e. three runs of
+      DIFFERENT policies, one each, not three repeats of a policy. The table
+      itself shows only two of the three (salv is unreported).
+      PRIVACY: the live footage is not shipped (identifiable person). Only
+      these derived CSVs are.
+    rows:
+      - paper_name: Stock-Default
+        internal_arm: fifo33
+        run_dirs: [e4_live/fifo33]
+        n_repeats: 1
+        notes: >-
+          The "6,433 / ~14,000" cell: 6433 is this run's arrivals_cum; the
+          ~14,000 denominator is NOT measured by this run — it is inferred
+          from the camera's nominal delivery rate. The run cannot see the
+          frames its transport ring dropped upstream of the first probe; that
+          blindness is the paper's point (F5), but it also means the
+          denominator is an estimate, not an observation.
+      - paper_name: VISTA-Activity
+        internal_arm: imp-k2
+        run_dirs: [e4_live/imp]
+        n_repeats: 1
+        stash: 1          # VERIFIED from the banner (see stash_note).
+        depth: 2
+        stash_note: >-
+          e4_live has NO run_meta.json, so the cmd
+          array is unavailable and the [sched] banner is the only evidence.
+          It reads:
+            [sched] mode=imp k=2 depth=2 tau_max=150ms tau_salvage=250ms
+                    w=(0.40,0.35,0.25) (decision log on)
+          depth=2 is stated outright. The stash is inferred, not printed: the
+          banner emits NO stash field, which identifies a PRE-stash build (the
+          post-stash banner prints "stash=N" — compare briefD2ctl_*), and that
+          build hardwired a single fresh[c] slot == stash 1 (docs/design/04
+          Sec. 6.1). Confidence: high, but this is a build-identification
+          inference rather than a literal argv reading.
+          Same paper mismatch as table2's VISTA-Activity row: the live
+          "VISTA-Activity" row is stash-1 data while Sec. IV-A declares the
+          policy is stash-2. See KNOWN-ISSUES.md.
+      - paper_name: "(unreported) VISTA-Salvage"
+        internal_arm: salv-k2
+        run_dirs: [e4_live/salv]
+        n_repeats: 1
+        stash: 1          # VERIFIED the same way as the imp row above.
+        depth: 2
+        notes: >-
+          Present in the archive, absent from the paper's table. Shipped for
+          completeness; live_report.py prints it.
+          Banner: mode=salvage k=2 depth=2, no stash field -> pre-stash build,
+          stash 1.
+
+# ---------------------------------------------------------------------------
+# DIAGNOSTICS — not paper table rows, but cited in prose or needed for figures
+# ---------------------------------------------------------------------------
+diagnostics:
+  - paper_name: "(ablation) all-admit K=4"
+    internal_arm: fresh-k4
+    oracle: office_x
+    metric: tta_recall
+    n_repeats: 5
+    run_dirs: [e3_m/fresh-k4_r0, e3_m/fresh-k4_r1, e3_m/fresh-k4_r2, e3_m/fresh-k4_r3, e3_m/fresh-k4_r4]
+    notes: >-
+      Observation 2's ablation: 146 ms age, 41.1% coverage. SEPARATE CLAIM,
+      NOT RE-DERIVED HERE (lead only): the overhead paragraph's throughput tax
+      "20%/7%/4% at s/m/l" is reportedly THIS arm's tax, not VISTA-Fresh's
+      (VISTA-Fresh ~11.8/14.7/13.0%). If true the tax is attributed to the
+      wrong arm and is non-monotonic for the arm the paper ships. Flagged in
+      the claim matrix; not confirmed by this file's author.
+
+  - paper_name: "(diagnostic) FIFO-5"
+    internal_arm: fifo5
+    oracle: office_x
+    metric: tta_recall
+    n_repeats: 5
+    run_dirs: [e3_m/fifo5_r0, e3_m/fifo5_r1, e3_m/fifo5_r2, e3_m/fifo5_r3, e3_m/fifo5_r4]
+    notes: "5 ms mux push timeout instead of 33 ms. Shows the timeout is not what causes the standing queue: 46.3/853/1016/34.2/0.0, indistinguishable from Stock-Default."
+
+  - paper_name: "(diagnostic) DROP-OLD"
+    internal_arm: dropold
+    oracle: office_x
+    metric: tta_recall
+    n_repeats: 5
+    run_dirs: [e3_m/dropold_r0, e3_m/dropold_r1, e3_m/dropold_r2, e3_m/dropold_r3, e3_m/dropold_r4]
+    notes: "nvstreammux's own drop-on-full config. 46.1/856/1006/34.3/0.0 — the stock knob does not remove the queue."
+
+  - paper_name: "(diagnostic) DEC-1/2"
+    internal_arm: dec12
+    oracle: office_x
+    metric: tta_recall
+    n_repeats: 3
+    run_dirs: [e3_m_decimate_r0/fifo33_r0, e3_m_decimate_r1/fifo33_r0, e3_m_decimate_r2/fifo33_r0]
+    notes: >-
+      THE TRAP ARM. --gap-every 4 (VERIFIED in all three run_meta.json cmd
+      arrays: e3_m_decimate_r{0,1,2}/fifo33_r0). This KEEPS (4-2)/4 = 1/2 of
+      frames, which is what "DEC-1/2" names — the keep-fraction, not the flag.
+      This registry said "--gap-every 2" until 2026-07-15; that was wrong, and
+      wrong in a way the flag's own semantics rule out (gap-every 2 keeps zero
+      frames). Mistuned decimation: 997 ms mean age, the
+      STALEST configuration measured, ~930 ms worse than Static-Decimation
+      (DEC-1/3) despite differing by one integer. This is the evidence for
+      "mistuned even slightly it becomes the stalest configuration measured".
+      MIXED-n DEFECT (VERIFIED): figures/e3_table_m.tex's DEC-1/2 row is
+      43.1/997/1265/31.6, which no single n reproduces. n=2 gives cov .4312
+      (43.1 OK) but age 993 (not 997). n=3 gives age 996.95 (997 OK) and p99
+      1264.65 (1265 OK) but cov .4301 (43.0, not 43.1). The row mixes n=2
+      oracle columns (recall_m_decimate.json scored only r0/r1) with n=3
+      age/p99 columns (read straight from the three metrics.csv). Same
+      mixed-n mechanism as Table II's Static-Decimation row, but here it
+      actually changes a printed digit. Diagnostic only; no paper table cell
+      depends on it.
+
+  - paper_name: "(diagnostic) SALV-K2"
+    internal_arm: salv-k2
+    oracle: office_x
+    metric: tta_recall
+    n_repeats: 3
+    run_dirs: [e8_salvfix_r0/salv-k2_r0, e8_salvfix_r1/salv-k2_r0, e8_salvfix_r2/salv-k2_r0]
+    notes: >-
+      The salvage mode, post-bugfix (e8_salvfix, the twin of e8_impfix).
+      Reported in no paper table. e3_m/salv-k2_r{0..4} is the PRE-fix data —
+      same hazard as imp-k2; prefer these dirs.
+
+  - paper_name: "(diagnostic) Stock-LiveDepth, 4 surfaces"
+    internal_arm: fifo-s4
+    oracle: office_x
+    metric: tta_recall
+    n_repeats: 3
+    run_dirs: [e7_surfcal_4/fifo33_r0, e7_surfcal_4_r1/fifo33_r0, e7_surfcal_4_r2/fifo33_r0]
+    notes: "--replay-surfaces 4. The pool-depth calibration ladder that establishes 'the queue depth is a transport configuration, not a constant': 4 surfaces -> ~610 ms, 2 surfaces -> ~410 ms, default -> ~857 ms. Scored in recall_e78.json."
+
+  - paper_name: "(diagnostic) d=1 at the skew workload"
+    internal_arm: fresh-k2 / imp-k2, depth 1
+    oracle: brief_x
+    metric: event_recall
+    n_repeats: 3
+    run_dirs:
+      - brief_fresh-k2_r0/fresh-k2_r0
+      - brief_fresh-k2_r1/fresh-k2_r0
+      - brief_fresh-k2_r2/fresh-k2_r0
+      - brief_imp-k2_r0/imp-k2_r0
+      - brief_imp-k2_r1/imp-k2_r0
+      - brief_imp-k2_r2/imp-k2_r0
+    notes: >-
+      --sched-depth 1 (VERIFIED in cmd). NOT a Table IV row — this is the
+      evidence for the practitioner note "running d=1 instead concentrates
+      equally and reaches the same recall, at ~5% throughput cost but roughly
+      half the output age": 60 ms mean age here vs 118 ms for briefD2ctl
+      (d=2). Scored in recall_brief.json. Easy to mistake for the Table IV
+      stash-1 rows; it is not.
+
+  - paper_name: "(diagnostic) importance concentration probes"
+    internal_arm: imp-k2 variants
+    run_dirs: [impdiag_d1, impdiag_heavy, _sanity_stash2]
+    notes: >-
+      impdiag_d1: --sched-depth 1 with --sched-w 0.3,0.5,0.2 (importance
+      up-weighted). impdiag_heavy: heavier importance weighting.
+      _sanity_stash2: a 20 s --sched-stash 2 smoke run. Exploratory; no
+      paper claim depends on them. Included so the record is complete.
+
+  - paper_name: "(diagnostic) release-depth sweep"
+    internal_arm: fresh-k2, d in {1,2}
+    run_dirs: [e9_depth1, e9_depth1_v2, e9_depth2, e9_depth2_v2]
+    notes: "The d=1 vs d=2 release-depth study on the office workload. _v2 are the reruns; prefer them."
+
+  - paper_name: "(diagnostic) sync-fidelity controls"
+    internal_arm: e6 offset sweep
+    run_dirs:
+      - e6_off0_sparq_r0
+      - e6_off0_sparq_r1
+      - e6_off0_syncbroken_r0
+      - e6_off0_syncbroken_r1
+      - e6_off0.33_sparq_r0
+      - e6_off0.33_sparq_r1
+      - e6_off0.33_syncbroken_r0
+      - e6_off0.33_syncbroken_r1
+      - e6_off0.66_sparq_r0
+      - e6_off0.66_sparq_r1
+      - e6_off0.66_syncbroken_r0
+      - e6_off0.66_syncbroken_r1
+      - e6_off1.0_sparq_r0
+      - e6_off1.0_sparq_r1
+      - e6_off1.0_syncbroken_r0
+      - e6_off1.0_syncbroken_r1
+    notes: >-
+      Cross-camera skew sweep, scheduler-on vs sync-broken control. Dir names
+      preserve "sparq", the project's former name — see the naming note in
+      README.md. No paper table row depends on these.
+
+  - paper_name: "(diagnostic) enriched-build TTA validation"
+    internal_arm: fifo33 / imp-k2 / salv-k2, enriched binary
+    run_dirs: [enriched_m_fifo/fifo33_r0, enriched_m_imp/imp-k2_r0, enriched_m_salv/salv-k2_r0]
+    notes: >-
+      Runs from the instrumented build whose dets carry a per-detection t_emit
+      stamp and whose sched.csv carries buf_pts. These are what validate the
+      mean-e2e approximation that tta_recall depends on everywhere else.
+      enriched_analysis.py scores them. This is the ONLY evidence that
+      tta_recall's central approximation holds.
+
+  - paper_name: "(gates) pre-flight correctness gates"
+    internal_arm: various, yolo11n
+    run_dirs: [gates]
+    notes: >-
+      Flat directory (not per-run subdirs): g1_fresh_k2_n, g1_fresh_k4_n,
+      g3_salv_k2_n, g4_dropold_n, g4_off_n, each as <name>.csv +
+      <name>_dets.jsonl.gz + <name>_sched.csv + <name>_stderr.log. The g4_off
+      gate is the one that checks `off` mode is bit-identical to stock.
+
+# ---------------------------------------------------------------------------
+# SUPERSEDED SCORING OUTPUTS — do not use, recorded so the hazard survives.
+# ---------------------------------------------------------------------------
+# Neither file ships (no scoring output does). They are named here because the
+# hazard is real for anyone scoring the ORIGINAL archive, and because a
+# generator run over that archive can rebuild them: a rescore of e3_m/ will
+# faithfully reproduce these wrong numbers from those pre-fix runs. Runs you
+# produce with this repository's scheduler are post-fix and unaffected.
+superseded:
+  - file: recall_m.json
+    reason: >-
+      Its imp-k2_r{0..4} and salv-k2_r{0..4} rows are PRE-importance-bugfix
+      (cov .3853/.3743/.3991/.4002/.3877, age ~92-98 ms). Superseded by
+      recall_m2.json, whose imp/salv rows carry the post-fix e8_* data (under
+      e3_m labels — see the Table II VISTA-Activity note). It is the only
+      record of the pre-fix behaviour and it is where frames_oracle=6415 is
+      documented.
+  - file: e3_m_aggregate.json
+    reason: >-
+      Its imp-k2 row aggregates the same pre-fix runs: cov 0.388, age 94.6 ms,
+      p99 141.9 ms, yield 0.283 — contradicting the draft's VISTA-Activity row
+      (31.7 / 115 / 200 / 23.3) on EVERY cell, by ~7 coverage points. The paper
+      correctly does not use it. Its fifo33 / fresh-k2 / fresh-k4 / fifo5 /
+      dropold rows are sound and ARE what the draft's p99 column uses for those
+      arms. Read those rows if you have the file; never its imp-k2 or salv-k2
+      rows.
