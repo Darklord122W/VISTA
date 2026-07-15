@@ -72,3 +72,5 @@ venv/
 .DS_Store
 *.swp
 *~
+
+KNOWN-ISSUES.md
