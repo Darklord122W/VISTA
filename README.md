@@ -1,7 +1,7 @@
 # VISTA
 
 **"VISTA: Value-Driven Inference Scheduling for Timely Autonomous Multi-Camera
-Perception"** — IEEE L-SMC, 2026.
+Perception"** submitted to IEEE L-SMC, 2026.
 
 The scheduler as a drop-in module for a DeepStream pipeline, a reference
 application that runs it, and the analysis and harness code behind the paper's
@@ -79,28 +79,7 @@ Ten more minutes: [`docs/00-quickstart.md`](docs/00-quickstart.md).
 | [`docs/`](docs/README.md) | design, integration, usage, and how to run the experiments |
 | [`third_party/`](third_party/DeepStream-Yolo/PROVENANCE.md) | the vendored YOLO parser, with its upstream provenance |
 
-## What this repository is, and is not
 
-**It is** the implementation and the tooling: the scheduler you can link, an
-application that exercises it, the harness that drives a campaign, and the code
-that scores one.
-
-**It does not include:**
-
-- **the measurement archive** — no run directories, no scored aggregates, no
-  generated figures;
-- **the camera footage** — it shows an identifiable person;
-- **model weights or TensorRT engines** — an engine is specific to the exact GPU,
-  driver, TensorRT and DeepStream version that built it, so a shipped one would
-  be silently wrong elsewhere;
-- **the manuscript** — no `.tex`, no PDF; it is cited by title.
-
-**So this repository does not reproduce the paper's tables**, and no page in it
-pretends otherwise. The analysis and harness code works, but you supply the run
-data: build the pipeline, use your own four-camera footage, run the campaign, and
-the numbers you get are yours — the oracle event set is a property of the
-footage. [`docs/reproduction/01-run-the-experiments.md`](docs/reproduction/01-run-the-experiments.md)
-is that path, end to end.
 
 ## Start here
 
@@ -113,9 +92,4 @@ browser with no server. It animates the real admission cycle, and it is a
 **simulation with illustrative timing**: its numbers are directional and are not
 measured results. The demo README says so precisely.
 
-If you are reviewing this artifact, read
-**[`KNOWN-ISSUES.md`](KNOWN-ISSUES.md)** — the places where this code disagrees
-with the current draft, and the defects in the code itself. The measurement
-archive behind the paper is not distributed here, so those items are recorded
-rather than demonstrated; the ones about source files can be checked by reading
-the file named.
+
